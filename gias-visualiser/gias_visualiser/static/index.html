@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GIAS Visualiser</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+    />
+    <style>
+      :root {
+        --bg: #f4f5f7;
+        --panel: #ffffff;
+        --border: #d8dce2;
+        --text: #16232e;
+        --muted: #4f6477;
+        --primary: #1a6b9d;
+        --primary-soft: #eaf5ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+        align-items: center;
+      }
+      .toolbar h1 {
+        margin: 0;
+        font-size: 1.1rem;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr) 340px;
+        flex: 1;
+        min-height: 0;
+      }
+      .panel {
+        background: var(--panel);
+        border-right: 1px solid var(--border);
+        overflow: auto;
+        padding: 16px;
+      }
+      .panel:last-child {
+        border-right: none;
+        border-left: 1px solid var(--border);
+      }
+      .filters,
+      .details {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .search-field {
+        position: relative;
+      }
+      .search-results {
+        position: absolute;
+        z-index: 10;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(22, 35, 46, 0.12);
+        overflow: hidden;
+      }
+      .search-results[hidden] {
+        display: none;
+      }
+      .search-result-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: white;
+        padding: 10px 12px;
+        cursor: pointer;
+        font: inherit;
+        color: var(--text);
+      }
+      .search-result-item:hover,
+      .search-result-item:focus-visible {
+        background: var(--primary-soft);
+      }
+      .search-result-item small {
+        display: block;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      select,
+      input[type="search"] {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: white;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+      }
+      .meta-card {
+        background: var(--primary-soft);
+        border: 1px solid #bfe2ff;
+        color: var(--text);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 0.85rem;
+      }
+      .school-summary {
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .school-summary h2 {
+        margin: 0 0 8px 0;
+        font-size: 1.2rem;
+      }
+      .detail-group {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fafbfc;
+      }
+      .detail-group h3 {
+        margin: 0;
+        padding: 8px 10px;
+        font-size: 0.95rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .detail-group dl {
+        margin: 0;
+        padding: 10px;
+        display: block;
+      }
+      .detail-grid {
+        display: block;
+        padding: 10px;
+        margin: 0;
+      }
+      dt {
+        font-weight: 700;
+        color: var(--muted);
+        margin-bottom: 4px;
+        display: block;
+      }
+      dd {
+        margin: 0 0 8px 0;
+        word-break: break-word;
+        white-space: pre-wrap;
+        display: block;
+      }
+      .detail-grid dt {
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .detail-grid dd {
+        margin: 0 0 10px 0;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .raw-data {
+        margin: 0;
+        padding: 10px;
+        max-height: 220px;
+        overflow: auto;
+        background: #f3f6f9;
+        border-top: 1px solid var(--border);
+        font-size: 0.75rem;
+        font-family: Consolas, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto minmax(300px, 1fr) auto;
+        }
+        .panel {
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <h1>GIAS Visualiser</h1>
+      <div id="source-meta" class="meta-card" role="status">Loading data…</div>
+    </div>
+
+    <div class="layout">
+      <aside class="panel">
+        <div class="filters">
+          <div>
+            <label for="search-input">Search</label>
+            <div class="search-field">
+              <input
+                id="search-input"
+                type="search"
+                placeholder="School or group name"
+                autocomplete="off"
+              />
+              <div id="search-results" class="search-results" hidden></div>
+            </div>
+          </div>
+          <div>
+            <label for="search-mode">Search mode</label>
+            <select id="search-mode">
+              <option value="school">School</option>
+              <option value="group">Group</option>
+            </select>
+          </div>
+          <button id="search-button" type="button">Search</button>
+          <div>
+            <label for="status-filter">Status</label>
+            <select id="status-filter"></select>
+          </div>
+          <div>
+            <label for="phase-filter">Phase</label>
+            <select id="phase-filter"></select>
+          </div>
+          <div>
+            <label for="type-filter">Type</label>
+            <select id="type-filter"></select>
+          </div>
+          <button id="reset-filters" type="button">Reset filters</button>
+        </div>
+      </aside>
+
+      <main class="panel" style="padding: 0">
+        <div id="map" aria-label="School map"></div>
+      </main>
+
+      <aside class="panel details">
+        <div id="details-pane">
+          <div class="school-summary">
+            <h2>Select a school</h2>
+            <p>Schools with coordinates will appear on the map.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script>
+      const map = L.map("map").setView([54.5, -3.5], 6);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      const statusSelect = document.getElementById("status-filter");
+      const phaseSelect = document.getElementById("phase-filter");
+      const typeSelect = document.getElementById("type-filter");
+      const searchInput = document.getElementById("search-input");
+      const searchMode = document.getElementById("search-mode");
+      const searchResults = document.getElementById("search-results");
+      const detailsPane = document.getElementById("details-pane");
+      const sourceMeta = document.getElementById("source-meta");
+      let markersLayer = null;
+      let loadGeneration = 0;
+      let schoolRequest = null;
+      let autocompleteRequest = null;
+      let searchDebounceTimer = null;
+      let selectedGroupUid = null;
+
+      function setLoadingState(message) {
+        sourceMeta.textContent = message;
+      }
+
+      function resetFilters() {
+        statusSelect.value = "Open";
+        phaseSelect.value = "";
+        typeSelect.value = "";
+        loadSchools();
+      }
+
+      async function loadFilters() {
+        const response = await fetch("/api/filters");
+        if (!response.ok) throw new Error("Could not load filters");
+        const filters = await response.json();
+        buildSelect(statusSelect, filters.status, "All statuses");
+        buildSelect(phaseSelect, filters.phase, "All phases");
+        buildSelect(typeSelect, filters.type, "All types");
+        statusSelect.value = filters.status.includes("Open") ? "Open" : "";
+      }
+
+      function buildSelect(selectEl, values, placeholder) {
+        selectEl.innerHTML = '<option value="">' + placeholder + "</option>";
+        values.forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          selectEl.appendChild(option);
+        });
+      }
+
+      async function loadSchools() {
+        const generation = ++loadGeneration;
+        schoolRequest?.abort();
+        schoolRequest = new AbortController();
+        if (markersLayer) {
+          map.removeLayer(markersLayer);
+          markersLayer = null;
+        }
+        setLoadingState("Loading schools...");
+        const params = new URLSearchParams();
+        if (statusSelect.value) params.set("status", statusSelect.value);
+        if (phaseSelect.value) params.set("phase", phaseSelect.value);
+        if (typeSelect.value) params.set("type_name", typeSelect.value);
+        if (selectedGroupUid) params.set("group_uid", selectedGroupUid);
+
+        try {
+          const response = await fetch("/api/schools?" + params.toString(), {
+            signal: schoolRequest.signal,
+          });
+          if (!response.ok) throw new Error("Could not load schools");
+          const schools = await response.json();
+          if (generation !== loadGeneration) return;
+          await renderMarkers(schools, generation);
+        } catch (error) {
+          if (generation === loadGeneration && error.name !== "AbortError") {
+            setLoadingState(
+              "Schools could not be loaded. Please retry the filter.",
+            );
+            console.error(error);
+          }
+        }
+      }
+
+      async function renderMarkers(schools, generation) {
+        const markers = [];
+        for (let offset = 0; offset < schools.length; offset += 250) {
+          if (generation !== loadGeneration) return;
+          for (const school of schools.slice(offset, offset + 250)) {
+            if (!Number.isFinite(school.lat) || !Number.isFinite(school.lng))
+              continue;
+            markers.push(L.marker([school.lat, school.lng], { school }));
+          }
+          setLoadingState(
+            "Preparing schools: " +
+              Math.min(offset + 250, schools.length) +
+              " / " +
+              schools.length,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        if (generation !== loadGeneration) return;
+        const layer = L.markerClusterGroup({
+          chunkedLoading: true,
+          chunkInterval: 16,
+          chunkDelay: 16,
+          animate: false,
+          removeOutsideVisibleBounds: true,
+          chunkProgress(processed, total) {
+            if (generation !== loadGeneration) return;
+            setLoadingState(
+              processed === total
+                ? "Loaded " + total + " mapped schools"
+                : "Mapping schools: " + processed + " / " + total,
+            );
+          },
+        });
+        layer.on("click", (event) => {
+          const school = event.layer.options.school;
+          event.layer
+            .bindPopup(
+              `<strong>${escapeHtml(school.name)}</strong><br>${escapeHtml(school.type || "")}<br>${escapeHtml(school.town || "")}`,
+            )
+            .openPopup();
+          showSchoolDetail(school.urn);
+        });
+        markersLayer = layer;
+        map.addLayer(layer);
+        if (markers.length === 0) {
+          setLoadingState("Loaded 0 mapped schools");
+        } else {
+          layer.addLayers(markers);
+        }
+      }
+
+      function formatDetailValue(value) {
+        if (value === null || value === undefined || value === "") return "—";
+        if (Array.isArray(value)) {
+          return (
+            value
+              .map((entry) =>
+                typeof entry === "object"
+                  ? JSON.stringify(entry, null, 2)
+                  : String(entry),
+              )
+              .join(", ") || "—"
+          );
+        }
+        if (typeof value === "object") {
+          return JSON.stringify(value, null, 2);
+        }
+        return String(value);
+      }
+
+      function renderDetailGroup(title, entries, rawData = null) {
+        const rows = entries
+          .filter(
+            (entry) =>
+              entry.value !== null &&
+              entry.value !== undefined &&
+              entry.value !== "",
+          )
+          .map(
+            (entry) => `
+              <dt>${escapeHtml(entry.label)}</dt>
+              <dd>${escapeHtml(formatDetailValue(entry.value))}</dd>
+            `,
+          )
+          .join("");
+
+        const rawSection = rawData
+          ? `
+              <div class="detail-group">
+                <h3>Raw data</h3>
+                <pre class="raw-data">${escapeHtml(JSON.stringify(rawData, null, 2))}</pre>
+              </div>
+            `
+          : "";
+
+        return `
+          <div class="detail-group">
+            <h3>${escapeHtml(title)}</h3>
+            <dl class="detail-grid">
+              ${rows || "<dt>Info</dt><dd>—</dd>"}
+            </dl>
+          </div>
+          ${rawSection}
+        `;
+      }
+
+      async function showSchoolDetail(urn) {
+        const response = await fetch("/api/schools/" + urn);
+        if (!response.ok) return;
+        const school = await response.json();
+        const schoolFields = [
+          { label: "URN", value: school.urn },
+          { label: "Establishment number", value: school.establishment_number },
+          { label: "Local authority", value: school.la_name || school.la_code },
+          { label: "Status", value: school.status },
+          { label: "Status code", value: school.status_code },
+          { label: "Type", value: school.type_name },
+          { label: "Type code", value: school.type_code },
+          { label: "Phase", value: school.phase_name },
+          { label: "Phase code", value: school.phase_code },
+          { label: "Town", value: school.town },
+          { label: "County", value: school.county },
+          { label: "Postcode", value: school.postcode },
+          { label: "Latitude", value: school.latitude },
+          { label: "Longitude", value: school.longitude },
+        ];
+
+        detailsPane.innerHTML = `
+          <div class="school-summary">
+            <h2>${escapeHtml(school.name || "Unnamed school")}</h2>
+            <p><strong>URN:</strong> ${escapeHtml(school.urn || "—")}</p>
+            <p><strong>Status:</strong> ${escapeHtml(school.status || "—")}</p>
+            <p><strong>Type:</strong> ${escapeHtml(school.type_name || "—")}</p>
+            <p><strong>Phase:</strong> ${escapeHtml(school.phase_name || "—")}</p>
+          </div>
+          ${renderDetailGroup("School details", schoolFields, school.raw)}
+        `;
+      }
+
+      async function showGroupDetail(groupUid) {
+        const response = await fetch("/api/groups/" + groupUid);
+        if (!response.ok) return;
+        const group = await response.json();
+        const memberItems = (group.members || [])
+          .slice(0, 12)
+          .map(
+            (member) =>
+              `<li><button type="button" class="result-item" data-id="${escapeHtml(member.urn)}" data-type="school">${escapeHtml(member.name || member.urn)}</button></li>`,
+          )
+          .join("");
+        const groupFields = [
+          { label: "UID", value: group.uid },
+          { label: "Type", value: group.type },
+          { label: "Status", value: group.status },
+          { label: "Town", value: group.town },
+          { label: "Postcode", value: group.postcode },
+        ];
+
+        detailsPane.innerHTML = `
+          <div class="school-summary">
+            <h2>${escapeHtml(group.name || "Unnamed group")}</h2>
+            <p><strong>UID:</strong> ${escapeHtml(group.uid || "—")}</p>
+            <p><strong>Status:</strong> ${escapeHtml(group.status || "—")}</p>
+            <p><strong>Type:</strong> ${escapeHtml(group.type || "—")}</p>
+          </div>
+          ${renderDetailGroup("Group details", groupFields, group.raw)}
+          <div class="detail-group">
+            <h3>Member schools</h3>
+            <ul>${memberItems || "<li>No member schools found.</li>"}</ul>
+          </div>
+        `;
+        detailsPane.querySelectorAll(".result-item").forEach((button) => {
+          button.addEventListener("click", () =>
+            showSchoolDetail(button.dataset.id),
+          );
+        });
+      }
+
+      function hideSearchResults() {
+        searchResults.innerHTML = "";
+        searchResults.hidden = true;
+      }
+
+      function renderAutocompleteResults(results) {
+        if (!results.length) {
+          hideSearchResults();
+          return;
+        }
+
+        searchResults.innerHTML = results
+          .map((item) => {
+            const kind = item.mode === "group" ? "group" : "school";
+            const tag = item.type ? `${escapeHtml(item.type)} • ` : "";
+            return `
+              <button
+                type="button"
+                class="search-result-item"
+                data-type="${kind}"
+                data-id="${escapeHtml(item.id)}"
+                data-name="${escapeHtml(item.name)}"
+              >
+                ${escapeHtml(item.name)}
+                <small>${tag}${escapeHtml(item.status || item.phase || item.town || "")}</small>
+              </button>
+            `;
+          })
+          .join("");
+
+        searchResults.hidden = false;
+        searchResults
+          .querySelectorAll(".search-result-item")
+          .forEach((button) => {
+            button.addEventListener("click", () => {
+              searchInput.value = button.dataset.name;
+              hideSearchResults();
+              if (button.dataset.type === "school") {
+                showSchoolDetail(button.dataset.id);
+              } else {
+                selectedGroupUid = button.dataset.id;
+                loadSchools();
+                showGroupDetail(button.dataset.id);
+              }
+            });
+          });
+      }
+
+      async function runAutocomplete() {
+        const query = searchInput.value.trim();
+        if (!query) {
+          hideSearchResults();
+          return;
+        }
+
+        autocompleteRequest?.abort();
+        autocompleteRequest = new AbortController();
+
+        try {
+          const response = await fetch(
+            `/api/search?mode=${searchMode.value}&q=${encodeURIComponent(query)}&limit=8`,
+            { signal: autocompleteRequest.signal },
+          );
+          if (!response.ok)
+            throw new Error("Could not load search suggestions");
+          const results = await response.json();
+          renderAutocompleteResults(results);
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            console.error(error);
+            hideSearchResults();
+          }
+        }
+      }
+
+      async function runSearch() {
+        const query = searchInput.value.trim();
+        hideSearchResults();
+        if (!query) {
+          detailsPane.innerHTML = `
+            <div class="school-summary">
+              <h2>Search</h2>
+              <p>Type a school or group name to look it up.</p>
+            </div>
+          `;
+          return;
+        }
+        const response = await fetch(
+          `/api/search?mode=${searchMode.value}&q=${encodeURIComponent(query)}`,
+        );
+        const results = await response.json();
+        if (!results.length) {
+          detailsPane.innerHTML = `
+            <div class="school-summary">
+              <h2>No matches</h2>
+              <p>Nothing matched “${escapeHtml(query)}”.</p>
+            </div>
+          `;
+          return;
+        }
+        const rendered = results
+          .map((item) => {
+            const kind = item.mode === "group" ? "group" : "school";
+            const label = item.type ? `${escapeHtml(item.type)} • ` : "";
+            return `
+            <li>
+              <button type="button" class="result-item" data-type="${kind}" data-id="${escapeHtml(item.id)}">
+                ${escapeHtml(item.name)}
+                <small>${label}${escapeHtml(item.status || item.phase || item.town || "")}</small>
+              </button>
+            </li>
+          `;
+          })
+          .join("");
+        detailsPane.innerHTML = `
+          <div class="school-summary">
+            <h2>Search results</h2>
+            <p>Showing matches for “${escapeHtml(query)}”.</p>
+          </div>
+          <div class="detail-group">
+            <ul>${rendered}</ul>
+          </div>
+        `;
+        detailsPane.querySelectorAll(".result-item").forEach((button) => {
+          button.addEventListener("click", () => {
+            if (button.dataset.type === "school") {
+              showSchoolDetail(button.dataset.id);
+            } else {
+              selectedGroupUid = button.dataset.id;
+              loadSchools();
+              showGroupDetail(button.dataset.id);
+            }
+          });
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      statusSelect.addEventListener("change", loadSchools);
+      phaseSelect.addEventListener("change", loadSchools);
+      typeSelect.addEventListener("change", loadSchools);
+      searchMode.addEventListener("change", () => {
+        if (searchInput.value.trim()) {
+          clearTimeout(searchDebounceTimer);
+          searchDebounceTimer = setTimeout(runAutocomplete, 250);
+        }
+      });
+      document
+        .getElementById("search-button")
+        .addEventListener("click", runSearch);
+      searchInput.addEventListener("input", () => {
+        clearTimeout(searchDebounceTimer);
+        if (!searchInput.value.trim()) {
+          hideSearchResults();
+          return;
+        }
+        searchDebounceTimer = setTimeout(runAutocomplete, 250);
+      });
+      document
+        .getElementById("search-input")
+        .addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            clearTimeout(searchDebounceTimer);
+            runSearch();
+          }
+        });
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest(".search-field")) {
+          hideSearchResults();
+        }
+      });
+      document.getElementById("reset-filters").addEventListener("click", () => {
+        selectedGroupUid = null;
+        resetFilters();
+      });
+
+      async function initialise() {
+        setLoadingState("Loading filters…");
+        await loadFilters();
+        await loadSchools();
+      }
+
+      initialise().catch((error) => {
+        setLoadingState(
+          "Could not initialise the map. Please reload to retry.",
+        );
+        console.error(error);
+      });
+    </script>
+  </body>
+</html>
